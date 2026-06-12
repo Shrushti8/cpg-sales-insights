@@ -1,6 +1,5 @@
 """Shared pytest fixtures."""
 import os
-import pytest
 
 # Always use mock LLM in tests
 os.environ.setdefault("LLM_PROVIDER", "mock")
