@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install ruff
+      - run: ruff check src tests
+
+  test-unit:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    needs: lint
+    env:
+      LLM_PROVIDER: mock
+      DB_PATH: data/processed/cpg_test.duckdb
+      MODEL_PATH: models/revenue_model_test.pkl
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e ".[dev]"
+      - run: mkdir -p data/processed models
+      - run: pytest tests/unit/ --cov=cpg_insights --cov-report=xml --cov-fail-under=60
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-unit
+          path: coverage.xml
+
+  test-integration:
+    name: Integration tests
+    runs-on: ubuntu-latest
+    needs: test-unit
+    env:
+      LLM_PROVIDER: mock
+      DB_PATH: data/processed/cpg_integ.duckdb
+      MODEL_PATH: models/revenue_model_integ.pkl
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e ".[dev]"
+      - run: mkdir -p data/raw data/processed models
+      - run: python -m cpg_insights.data_gen.generate
+      - run: python -m cpg_insights.pipeline.run
+      - run: python -m cpg_insights.forecasting.train
+      - run: pytest tests/integration/ --cov=cpg_insights --cov-report=xml
+
+  docker-build:
+    name: Docker build + smoke test
+    runs-on: ubuntu-latest
+    needs: test-integration
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build API image
+        run: docker build -t cpg-insights-api --target runtime .
+      - name: Smoke test
+        run: |
+          docker run -d --name cpg-api \
+            -e LLM_PROVIDER=mock \
+            -e DB_PATH=/app/data/processed/cpg.duckdb \
+            -e MODEL_PATH=/app/models/revenue_model.pkl \
+            -p 8000:8000 cpg-insights-api
+          sleep 5
+          curl --fail http://localhost:8000/health
+          docker stop cpg-api

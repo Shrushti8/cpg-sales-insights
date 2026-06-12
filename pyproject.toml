@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68", "setuptools-scm", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cpg-insights"
+version = "0.1.0"
+description = "CPG Sales Insights — AIA Engineer Evaluation Project"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.111.0",
+    "uvicorn[standard]>=0.29.0",
+    "streamlit>=1.35.0",
+    "duckdb>=0.10.3",
+    "pandas>=2.2.0",
+    "scikit-learn>=1.5.0",
+    "google-genai>=0.7.0",
+    "pydantic-settings>=2.3.0",
+    "python-multipart>=0.0.9",
+    "httpx>=0.27.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2.0",
+    "pytest-cov>=5.0.0",
+    "pytest-asyncio>=0.23.0",
+    "ruff>=0.4.7",
+    "httpx>=0.27.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "--cov=cpg_insights --cov-report=term-missing --cov-fail-under=60"
+
+[tool.ruff]
+line-length = 100
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
