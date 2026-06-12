@@ -14,6 +14,8 @@
 | 2026-06-13 | ~1h | Planning + Scaffold | Claude Code | Full architecture plan, all scaffold files, pyproject.toml, Makefile, .env.example | Confirmed all choices; added cheap extras (anomaly highlights, forecast explain, CSV upload, Mermaid diagram) |
 | 2026-06-13 | ~30m | DevOps — CI setup + GitHub push | Claude Code | GitHub Actions ci.yml (4 stages: lint→unit→integration→docker), gh CLI install, repo creation | Caught that workflow scope was missing from gh auth — had to re-authenticate manually; AI didn't anticipate this |
 | 2026-06-13 | ~10m | Fix — lint errors | Claude Code | Auto-fixed 3 ruff errors (import ordering in config.py + conftest.py, unused pytest import) | No override needed; ran make lint locally, confirmed clean before pushing |
+| 2026-06-13 | ~45m | Phase 1 — Mock data generator | Claude Code | generate.py (50k transactions, 2 source feeds, seasonal patterns), products.py (36 SKUs / 5 categories), stores.py (25 stores / 5 regions), 16 unit tests | Overrode: AI used Indian city names for stores (good regional flavour, kept it); AI added unused math import and long lines — caught by lint and fixed; added per-file ruff ignore for seed data files |
+| 2026-06-13 | ~15m | Fix — CI unit test failure | Claude Code | Identified root causes: no tests committed yet + coverage gate on wrong step; fixed ci.yml (removed --cov-fail-under from unit step, moved gate to integration step over full suite); added test_config.py as baseline unit test; removed global --cov-fail-under from pyproject.toml | Overrode AI's initial placement of coverage gate — wrong to enforce 60% on a partial test run |
 
 ## Key Decisions Log
 
