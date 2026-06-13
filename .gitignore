@@ -15,7 +15,7 @@ build/
 # Model artifacts
 *.pkl
 *.joblib
-models/
+models/*.pkl
 
 # Data (keep .gitkeep placeholders only)
 data/raw/*.csv

@@ -60,4 +60,26 @@ CREATE TABLE IF NOT EXISTS rejected_transactions (
     raw_data         VARCHAR,
     rejected_at      TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS anomalies (
+    anomaly_id     VARCHAR PRIMARY KEY,
+    detected_at    TIMESTAMP,
+    month          DATE,
+    category       VARCHAR,
+    region         VARCHAR,
+    actual_revenue DOUBLE,
+    z_score        DOUBLE,
+    severity       VARCHAR,
+    description    VARCHAR
+);
+
+CREATE TABLE IF NOT EXISTS model_metrics (
+    run_id         VARCHAR PRIMARY KEY,
+    trained_at     TIMESTAMP,
+    mae            DOUBLE,
+    mape           DOUBLE,
+    holdout_months INTEGER,
+    n_train        INTEGER,
+    n_test         INTEGER
+);
 """
