@@ -191,7 +191,8 @@ def explain_forecast(
     prompt = (
         "You are a CPG sales analyst for an Indian market company. "
         "All revenue values are in Indian Rupees. Always use the ₹ symbol for every amount. "
-        "Explain the following revenue forecast in plain English for a non-technical business audience. "
+        "Explain the following revenue forecast in plain English "
+        "for a non-technical business audience. "
         "Cover: (1) what the trend looks like, (2) likely seasonal or demand drivers, "
         "(3) confidence in the projection. Keep it to 3–5 sentences.\n\n"
         f"Category: {category}\nRegion: {region}\n"
