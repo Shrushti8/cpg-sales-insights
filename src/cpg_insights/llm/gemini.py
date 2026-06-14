@@ -6,14 +6,16 @@ from cpg_insights.llm.base import LLMProvider
 class GeminiProvider(LLMProvider):
     def __init__(self, api_key: str, model: str = "gemini-1.5-flash") -> None:
         try:
-            import google.generativeai as genai
+            from google import genai
         except ImportError as exc:
             raise ImportError(
-                "google-generativeai is not installed. Run: uv add google-generativeai"
+                "google-genai is not installed. Run: uv add google-genai"
             ) from exc
-        genai.configure(api_key=api_key)
-        self._client = genai.GenerativeModel(model)
+        self._client = genai.Client(api_key=api_key)
+        self._model = model
 
     def generate(self, prompt: str) -> str:
-        response = self._client.generate_content(prompt)
+        response = self._client.models.generate_content(
+            model=self._model, contents=prompt
+        )
         return response.text
