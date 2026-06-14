@@ -56,6 +56,10 @@ def _build_date_dim(dates: pd.Series) -> pd.DataFrame:
 
 
 def load_facts(conn: duckdb.DuckDBPyConnection, df: pd.DataFrame) -> int:
+    # Full reload each run — this is batch ETL, not incremental
+    conn.execute("DELETE FROM fact_sales")
+    conn.execute("DELETE FROM dim_date")
+
     # Build and load date dimension
     date_dim = _build_date_dim(df["txn_date"])
     if not date_dim.empty:
@@ -64,15 +68,9 @@ def load_facts(conn: duckdb.DuckDBPyConnection, df: pd.DataFrame) -> int:
             date_dim.values.tolist(),
         )
 
-    # Load fact_sales — skip rows with duplicate transaction_id already in DB
-    existing = set(
-        r[0] for r in conn.execute("SELECT transaction_id FROM fact_sales").fetchall()
-    )
-    new_rows = df[~df["transaction_id"].isin(existing)]
-
     cols = ["transaction_id","txn_date","store_id","sku_id",
             "quantity","unit_price","total_amount","source","channel"]
-    rows = new_rows[cols].values.tolist()
+    rows = df[cols].values.tolist()
     if rows:
         conn.executemany("INSERT INTO fact_sales VALUES (?,?,?,?,?,?,?,?,?)", rows)
 
@@ -81,6 +79,7 @@ def load_facts(conn: duckdb.DuckDBPyConnection, df: pd.DataFrame) -> int:
 
 def load_rejected(conn: duckdb.DuckDBPyConnection, rejected_df: pd.DataFrame) -> int:
     """Write rejected rows to the quarantine table with their rejection reason."""
+    conn.execute("DELETE FROM rejected_transactions")
     if rejected_df.empty:
         return 0
 
