@@ -109,6 +109,35 @@ def test_ecom_has_currency_string_prices(generated_data):
     assert len(currency_rows) > 0, "Expected some prices with $ prefix in ecom feed"
 
 
+def test_pos_has_null_transaction_ids(generated_data):
+    df = pd.read_csv(generated_data / "transactions_pos.csv")
+    assert df["transaction_id"].isna().sum() > 0, "Expected some null transaction IDs"
+
+
+def test_pos_has_invalid_dates(generated_data):
+    df = pd.read_csv(generated_data / "transactions_pos.csv", dtype=str)
+    bad = df["date"].isin(["not-a-date", "00/00/0000", "2024-13-45"]).sum()
+    assert bad > 0, "Expected some unparseable dates in POS feed"
+
+
+def test_ecom_has_invalid_prices(generated_data):
+    rows = json.loads((generated_data / "transactions_ecom.json").read_text())
+    bad = [r for r in rows if str(r.get("price_each", "")) in ("N/A", "TBD", "")]
+    assert len(bad) > 0, "Expected some non-numeric prices in ecom feed"
+
+
+def test_ecom_has_zero_prices(generated_data):
+    rows = json.loads((generated_data / "transactions_ecom.json").read_text())
+    zeros = [r for r in rows if str(r.get("price_each", "")) == "0.00"]
+    assert len(zeros) > 0, "Expected some zero prices in ecom feed"
+
+
+def test_ecom_has_out_of_range_dates(generated_data):
+    rows = json.loads((generated_data / "transactions_ecom.json").read_text())
+    oor = [r for r in rows if str(r.get("order_date", "")) in ("1999-05-20", "2030-08-15")]
+    assert len(oor) > 0, "Expected some out-of-range dates in ecom feed"
+
+
 def test_generator_is_deterministic(tmp_path):
     out1 = tmp_path / "run1"
     out2 = tmp_path / "run2"

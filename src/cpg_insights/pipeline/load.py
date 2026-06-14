@@ -12,7 +12,7 @@ Tables written:
 
 import json
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 import duckdb
@@ -93,7 +93,7 @@ def load_rejected(conn: duckdb.DuckDBPyConnection, rejected_df: pd.DataFrame) ->
             raw.get("source"),
             row.get("rejection_reason", "unknown"),
             json.dumps(raw, default=str),
-            datetime.utcnow(),
+            datetime.now(UTC),
         ])
 
     conn.executemany(
@@ -110,7 +110,7 @@ def save_quality_report(
         "INSERT OR REPLACE INTO pipeline_runs VALUES (?,?,?,?,?,?,?)",
         [
             str(uuid.uuid4()),
-            datetime.utcnow(),
+            datetime.now(UTC),
             report.source,
             report.rows_extracted,
             report.rows_valid,

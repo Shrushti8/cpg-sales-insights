@@ -6,7 +6,12 @@ import pandas as pd
 import pytest
 
 from cpg_insights.pipeline.dedupe import dedupe
-from cpg_insights.pipeline.extract import UNIFIED_COLS, extract_ecom, extract_pos
+from cpg_insights.pipeline.extract import (
+    UNIFIED_COLS,
+    extract_all,
+    extract_ecom,
+    extract_pos,
+)
 from cpg_insights.pipeline.transform import transform
 from cpg_insights.pipeline.validate import validate
 
@@ -84,6 +89,15 @@ def test_extract_ecom_maps_product_code_to_sku_id(ecom_file):
     assert "BEV002" in df["sku_id"].values
 
 
+def test_extract_all_combines_both_sources(pos_file, ecom_file):
+    # pos_file and ecom_file share the same tmp_path within one test
+    raw_dir = pos_file.parent
+    df = extract_all(raw_dir)
+    assert list(df.columns) == UNIFIED_COLS
+    assert set(df["source"]) == {"pos", "ecom"}
+    assert len(df) == 4  # 2 POS rows + 2 ecom rows
+
+
 # ── Validate tests ────────────────────────────────────────────────────────────
 
 def test_validate_passes_clean_rows(clean_df):
@@ -91,6 +105,18 @@ def test_validate_passes_clean_rows(clean_df):
     clean, rejected, report = validate(clean_df, valid_skus)
     assert len(clean) == 2
     assert len(rejected) == 0
+
+
+def test_validate_rejects_null_transaction_id(clean_df):
+    clean_df.loc[0, "transaction_id"] = None
+    _, _, report = validate(clean_df, {"BEV001", "SNK001"})
+    assert "null_transaction_id" in report.rejection_rules
+
+
+def test_validate_rejects_blank_transaction_id(clean_df):
+    clean_df.loc[0, "transaction_id"] = "   "
+    _, _, report = validate(clean_df, {"BEV001", "SNK001"})
+    assert "null_transaction_id" in report.rejection_rules
 
 
 def test_validate_rejects_null_sku(clean_df):
@@ -203,6 +229,16 @@ def test_transform_strips_dollar_sign():
 def test_transform_casts_quantity_to_integer(clean_df):
     result = transform(clean_df)
     assert result["quantity"].dtype.name in ("Int64", "int64")
+
+
+def test_transform_recalculates_missing_total():
+    df = pd.DataFrame([{
+        "transaction_id": "T1", "txn_date": "2024-01-01", "store_id": "S1",
+        "sku_id": "X", "quantity": "3", "unit_price": "10.0",
+        "total_amount": None, "source": "pos", "channel": "store",
+    }])
+    result = transform(df)
+    assert result.iloc[0]["total_amount"] == pytest.approx(30.0)
 
 
 # ── Dedupe tests ──────────────────────────────────────────────────────────────

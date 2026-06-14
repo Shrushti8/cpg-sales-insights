@@ -152,6 +152,14 @@ def _inject_quality_issues(
         if rng.random() < 0.005:
             rec["sku"] = f"UNKNOWN_{rng.randint(100, 999)}"
 
+        # Null / blank transaction_id (~0.3%) — broken upstream key
+        if rng.random() < 0.003:
+            rec["transaction_id"] = None
+
+        # Unparseable date (~0.4%) — corrupted timestamp
+        if rng.random() < 0.004:
+            rec["date"] = rng.choice(["not-a-date", "00/00/0000", "2024-13-45"])
+
         pos_records.append(rec)
 
     # Duplicate ~2% of records (retry/at-least-once delivery)
@@ -160,14 +168,19 @@ def _inject_quality_issues(
     pos_records.extend(dupes)
     rng.shuffle(pos_records)
 
-    # Late-arriving records: redate ~1% to a future window outside normal range
+    # Late-arriving records: redate ~1% to simulate out-of-order delivery.
+    # Skip records that already carry an injected null id or corrupted date.
     n_late = int(len(pos_records) * 0.01)
     for rec in rng.sample(pos_records, n_late):
-        late_days = rng.randint(1, 10)
-        d = date.fromisoformat(rec["date"]) + timedelta(days=late_days)
-        # clamp to END_DATE
+        if rec["transaction_id"] is None:
+            continue
+        try:
+            base = date.fromisoformat(rec["date"])
+        except (ValueError, TypeError):
+            continue  # corrupted date — leave it for the validate stage to catch
+        d = base + timedelta(days=rng.randint(1, 10))
         if d > END_DATE:
-            d = END_DATE
+            d = END_DATE  # clamp to keep within the dataset window
         rec["date"] = d.strftime("%Y-%m-%d")
         rec["transaction_id"] = rec["transaction_id"] + "_LATE"
 
@@ -214,6 +227,18 @@ def _inject_quality_issues(
             rec["quantity"] = 0
             rec["amount"] = 0.0
 
+        # Invalid price string (~1%) — placeholder value never cleaned
+        if rng.random() < 0.01:
+            rec["price_each"] = rng.choice(["N/A", "TBD", ""])
+
+        # Zero price (~0.5%) — pricing error / freebie not flagged
+        if rng.random() < 0.005:
+            rec["price_each"] = "0.00"
+
+        # Out-of-range date (~0.3%) — year typo outside the 2020→today window
+        if rng.random() < 0.003:
+            rec["order_date"] = rng.choice(["1999-05-20", "2030-08-15"])
+
         ecom_records.append(rec)
 
     return pos_records, ecom_records
@@ -248,19 +273,33 @@ def _print_quality_summary(pos: list[dict], ecom: list[dict]) -> None:
     print("\n── Quality issues injected ──────────────────────────────────────")
     null_store = sum(1 for r in pos if r.get("store_id") is None)
     null_sku = sum(1 for r in pos if r.get("sku") is None)
+    null_txn = sum(1 for r in pos if r.get("transaction_id") is None)
     neg_qty = sum(1 for r in pos if isinstance(r.get("qty"), (int, float)) and r["qty"] < 0)
     unknown_sku = sum(
         1 for r in pos if isinstance(r.get("sku"), str) and r["sku"].startswith("UNKNOWN")
     )
-    dupes = len(pos) - len(set(r["transaction_id"].replace("_LATE", "") for r in pos))
-    print(f"  POS  — null store_id: {null_store}, null sku: {null_sku}, "
-          f"negative qty: {neg_qty}, unknown sku: {unknown_sku}, duplicates: ~{dupes}")
+    bad_dates = sum(
+        1 for r in pos
+        if str(r.get("date", "")) in ("not-a-date", "00/00/0000", "2024-13-45")
+    )
+    dupes = len(pos) - len(set(
+        r["transaction_id"].replace("_LATE", "")
+        for r in pos if r.get("transaction_id") is not None
+    ))
+    print(f"  POS  — null txn_id: {null_txn}, null store_id: {null_store}, null sku: {null_sku}, "
+          f"negative qty: {neg_qty}, unknown sku: {unknown_sku}, "
+          f"invalid dates: {bad_dates}, duplicates: ~{dupes}")
     null_prod = sum(1 for r in ecom if r.get("product_code") is None)
     zero_qty = sum(1 for r in ecom if r.get("quantity") == 0)
     mixed_dates = sum(1 for r in ecom if "/" in str(r.get("order_date", "")))
     currency_str = sum(1 for r in ecom if "$" in str(r.get("price_each", "")))
+    invalid_price = sum(1 for r in ecom if str(r.get("price_each", "")) in ("N/A", "TBD", ""))
+    zero_price = sum(1 for r in ecom if str(r.get("price_each", "")) == "0.00")
+    oor_dates = sum(1 for r in ecom if str(r.get("order_date", "")) in ("1999-05-20", "2030-08-15"))
     print(f"  Ecom — null product_code: {null_prod}, zero qty: {zero_qty}, "
-          f"mixed date formats: {mixed_dates}, price with $: {currency_str}")
+          f"mixed date formats: {mixed_dates}, price with $: {currency_str}, "
+          f"invalid price: {invalid_price}, zero price: {zero_price}, "
+          f"out-of-range dates: {oor_dates}")
     print("─────────────────────────────────────────────────────────────────\n")
 
 

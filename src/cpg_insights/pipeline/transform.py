@@ -43,7 +43,9 @@ def transform(df: pd.DataFrame) -> pd.DataFrame:
     df["quantity"] = pd.to_numeric(df["quantity"], errors="coerce").astype("Int64")
     df["total_amount"] = pd.to_numeric(df["total_amount"], errors="coerce")
 
-    # Recalculate total_amount from qty * unit_price where total looks wrong or missing
+    # Recalculate total_amount from qty * unit_price where total is missing
+    # (qty and unit_price are guaranteed present here — null/invalid rows were
+    #  already quarantined in the validate stage that runs before transform)
     mask = df["total_amount"].isna() & df["quantity"].notna() & df["unit_price"].notna()
     df.loc[mask, "total_amount"] = df.loc[mask, "quantity"] * df.loc[mask, "unit_price"]
 

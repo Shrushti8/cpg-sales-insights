@@ -4,12 +4,15 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from cpg_insights.db.connection import get_connection
 from cpg_insights.forecasting.anomaly import _severity, detect_anomalies
 from cpg_insights.forecasting.features import (
+    build_monthly_revenue,
     engineer_features,
     make_predict_row,
     to_model_matrix,
 )
+from cpg_insights.forecasting.model import load_model, predict, train
 
 # ── Feature engineering ───────────────────────────────────────────────────────
 
@@ -213,3 +216,91 @@ def test_model_beats_naive_baseline(tmp_path):
     assert mae_model < mae_naive, (
         f"Ridge (MAE={mae_model:.1f}) should beat naive mean (MAE={mae_naive:.1f})"
     )
+
+
+# ── DB-backed model train / predict (real DuckDB) ─────────────────────────────
+
+@pytest.fixture()
+def populated_db(tmp_path):
+    """A small DuckDB with 2 categories × 2 regions over 10 months of fact_sales."""
+    db_path = tmp_path / "test.duckdb"
+    conn = get_connection(str(db_path))
+
+    conn.executemany("INSERT INTO dim_product VALUES (?,?,?,?,?,?,?)", [
+        ["P1", "Prod1", "CatA", "BrandX", "100ml", 50.0, "2020-01-01"],
+        ["P2", "Prod2", "CatB", "BrandY", "100ml", 80.0, "2020-01-01"],
+    ])
+    conn.executemany("INSERT INTO dim_store VALUES (?,?,?,?,?,?)", [
+        ["ST1", "Store1", "RegX", "City1", "State1", "Urban"],
+        ["ST2", "Store2", "RegY", "City2", "State2", "Urban"],
+    ])
+
+    rows = []
+    tid = 0
+    for month in range(1, 11):
+        d = f"2024-{month:02d}-15"
+        for sku, base in [("P1", 50.0), ("P2", 80.0)]:
+            for store in ["ST1", "ST2"]:
+                for k in range(3):
+                    tid += 1
+                    qty = 2 + k
+                    price = base + month  # mild upward trend so the model has signal
+                    rows.append([f"T{tid:05d}", d, store, sku, qty,
+                                 price, qty * price, "pos", "store"])
+    conn.executemany("INSERT INTO fact_sales VALUES (?,?,?,?,?,?,?,?,?)", rows)
+    yield conn, db_path
+    conn.close()
+
+
+def test_build_monthly_revenue_shape(populated_db):
+    conn, _ = populated_db
+    df = build_monthly_revenue(conn)
+    assert set(df["category"]) == {"CatA", "CatB"}
+    assert set(df["region"]) == {"RegX", "RegY"}
+    assert len(df) == 10 * 2 * 2  # 10 months × 2 categories × 2 regions
+
+
+def test_train_persists_model_and_metrics(populated_db, tmp_path):
+    conn, _ = populated_db
+    model_path = tmp_path / "m.pkl"
+    metrics = train(conn, holdout_months=2, model_path=model_path)
+    assert model_path.exists()
+    assert metrics["mae"] >= 0
+    assert "mape" in metrics
+    n = conn.execute("SELECT COUNT(*) FROM model_metrics").fetchone()[0]
+    assert n == 1
+
+
+def test_load_model_roundtrip(populated_db, tmp_path):
+    conn, _ = populated_db
+    model_path = tmp_path / "m.pkl"
+    train(conn, holdout_months=2, model_path=model_path)
+    artifact = load_model(model_path)
+    assert {"model", "scaler", "feature_cols", "dummy_cols", "residual_std"} <= artifact.keys()
+
+
+def test_predict_returns_horizon_rows_with_valid_ci(populated_db, tmp_path):
+    conn, _ = populated_db
+    model_path = tmp_path / "m.pkl"
+    train(conn, holdout_months=2, model_path=model_path)
+    result = predict("CatA", "RegX", horizon=3, conn=conn, model_path=model_path)
+    assert len(result) == 3
+    for r in result:
+        assert r["predicted_revenue"] >= 0
+        assert r["lower_bound"] <= r["predicted_revenue"] <= r["upper_bound"]
+
+
+def test_predict_raises_on_insufficient_history(populated_db, tmp_path):
+    conn, _ = populated_db
+    model_path = tmp_path / "m.pkl"
+    train(conn, holdout_months=2, model_path=model_path)
+    with pytest.raises(ValueError):
+        predict("CatA", "NoSuchRegion", horizon=2, conn=conn, model_path=model_path)
+
+
+def test_detect_anomalies_persists_to_db(populated_db):
+    conn, _ = populated_db
+    result = detect_anomalies(conn, z_threshold=0.5)  # low threshold to force flags
+    n = conn.execute("SELECT COUNT(*) FROM anomalies").fetchone()[0]
+    assert n == len(result)
+    assert n > 0
