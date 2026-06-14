@@ -144,7 +144,8 @@ def get_summary(conn: duckdb.DuckDBPyConnection, llm: LLMProvider) -> str:
         "anomalies": _q_anomalies(conn),
     }
     prompt = (
-        "You are a CPG (consumer packaged goods) sales analyst. "
+        "You are a CPG (consumer packaged goods) sales analyst for an Indian market company. "
+        "All revenue values are in Indian Rupees. Always use the ₹ symbol for every amount. "
         "Write a concise 3–5 sentence executive summary of the following sales data. "
         "Highlight the top-performing category, strongest region, any notable trends, "
         "and whether anomalies need attention. Use plain business language, no jargon.\n\n"
@@ -166,7 +167,8 @@ def answer_question(
         data[key] = fn(conn)
 
     prompt = (
-        "You are a CPG sales analyst assistant. "
+        "You are a CPG sales analyst assistant for an Indian market company. "
+        "All revenue values are in Indian Rupees. Always use the ₹ symbol for every amount. "
         "Answer the following question using ONLY the data provided below. "
         "Be concise (2–4 sentences). If the data does not contain enough information "
         "to answer, say so clearly.\n\n"
@@ -187,10 +189,11 @@ def explain_forecast(
     trend = _q_monthly_trend(conn)
     cat_data = [r for r in _q_revenue_by_category(conn) if r["category"] == category]
     prompt = (
-        "You are a CPG sales analyst. Explain the following revenue forecast in plain English "
-        "for a non-technical business audience. Cover: (1) what the trend looks like, "
-        "(2) likely seasonal or demand drivers, (3) confidence in the projection. "
-        "Keep it to 3–5 sentences.\n\n"
+        "You are a CPG sales analyst for an Indian market company. "
+        "All revenue values are in Indian Rupees. Always use the ₹ symbol for every amount. "
+        "Explain the following revenue forecast in plain English for a non-technical business audience. "
+        "Cover: (1) what the trend looks like, (2) likely seasonal or demand drivers, "
+        "(3) confidence in the projection. Keep it to 3–5 sentences.\n\n"
         f"Category: {category}\nRegion: {region}\n"
         f"Forecast (next months): {json.dumps(forecast_rows, default=str)}\n"
         f"Historical monthly trend: {json.dumps(trend[-12:], default=str)}\n"
@@ -213,7 +216,8 @@ def explain_anomaly(
     prompt = (
         f"In one sentence, suggest the most likely business reason for a revenue {direction} "
         f"({severity} severity, z-score {z_score:.1f}) in the {category} category, "
-        f"{region} region, during {month}. "
+        f"{region} region of India, during {month}. "
+        "All amounts are in Indian Rupees (₹). "
         "Keep it factual and brief — no hedging phrases like 'it could be'."
     )
     return llm.generate(prompt)
