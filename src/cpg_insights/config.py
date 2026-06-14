@@ -8,7 +8,7 @@ class Settings(BaseSettings):
 
     llm_provider: str = "mock"
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-1.5-flash"
+    gemini_model: str = "gemini-flash-latest"
 
     db_path: str = "data/processed/cpg.duckdb"
     model_path: str = "models/revenue_model.pkl"
